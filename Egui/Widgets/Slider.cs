@@ -398,8 +398,8 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     {
         ui.AssertInitialized();
         var value = double.CreateSaturating(_value);
-        using EguiCallbackStr? callback = _customFormatter is not null ? new EguiCallbackStr(_customFormatter) : null;
-        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, EguiCallbackStr?, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value, callback);
+        using EguiCallbackFn<double, string>? callback = _customFormatter is not null ? new EguiCallbackFn<double, string>(_customFormatter) : null;
+        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, EguiCallbackFn<double, string>?, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value, callback);
         _value = T.CreateSaturating(newValue);
         return response;
     }
