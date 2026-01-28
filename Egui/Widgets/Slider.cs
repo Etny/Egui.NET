@@ -19,6 +19,8 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     private ref T _value;
     private SerializableSlider _inner;
 
+    private Func<double, string>? _customFormatter = null;
+
     /// <summary>
     /// Creates a new horizontal slider.
     ///
@@ -111,6 +113,13 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     {
         var result = this;
         result._inner.Orientation = orientation;
+        return result;
+    }
+
+    public readonly Slider<T> CustomFormatter(Func<double, string> formatter)
+    {
+        var result = this;
+        result._customFormatter = formatter;
         return result;
     }
 
@@ -389,7 +398,8 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     {
         ui.AssertInitialized();
         var value = double.CreateSaturating(_value);
-        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value);
+        using EguiCallbackStr? callback = _customFormatter is not null ? new EguiCallbackStr(_customFormatter) : null;
+        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, EguiCallbackStr?, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value, callback);
         _value = T.CreateSaturating(newValue);
         return response;
     }
@@ -470,11 +480,15 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
 
         internal static SerializableSlider Deserialize(Bincode.BincodeDeserializer deserializer) => throw new NotSupportedException();
 
-        private static void serialize_option_HandleShape(HandleShape? value, Bincode.BincodeSerializer serializer) {
-            if (value is not null) {
+        private static void serialize_option_HandleShape(HandleShape? value, Bincode.BincodeSerializer serializer)
+        {
+            if (value is not null)
+            {
                 serializer.serialize_option_tag(true);
                 value.Value.Serialize(serializer);
-            } else {
+            }
+            else
+            {
                 serializer.serialize_option_tag(false);
             }
         }

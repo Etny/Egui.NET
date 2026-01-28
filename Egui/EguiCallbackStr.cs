@@ -7,8 +7,19 @@ namespace Egui;
 /// <summary>
 /// A callback that may be passed to unmanaged code.
 /// </summary>
-internal unsafe partial struct EguiCallback : IDisposable
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe partial struct EguiCallbackStr : IDisposable
 {
+
+    /// <summary>
+    ///  The function to call.
+    /// </summary>
+    public delegate* unmanaged[Cdecl]<void*, void*, nint> func;
+    /// <summary>
+    ///  Data to pass as the second function argument.
+    /// </summary>
+    public void* data;
+
     /// <summary>
     /// The last exception that occurred.
     /// </summary>
@@ -19,9 +30,9 @@ internal unsafe partial struct EguiCallback : IDisposable
     /// Creates a new object for invoking the given callback.
     /// </summary>
     /// <param name="callback">The callback to invoke.</param>
-    public EguiCallback(Action<nuint> callback)
+    public EguiCallbackStr(Func<double, string> callback)
     {
-        func = &InvokeCallback;
+        func = &InvokeCallbackSTR;
         data = (void*)(nint)GCHandle.Alloc(callback);
     }
 
@@ -45,24 +56,27 @@ internal unsafe partial struct EguiCallback : IDisposable
     /// <param name="callback">A GC handle to the callback that should be invoked.</param>
     /// <param name="data">The data to provide to the callback.</param>
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void InvokeCallback(void* argument, void* data)
+    private static nint InvokeCallbackSTR(void* argument, void* data)
     {
         try
         {
-            var action = (Action<nuint>)GCHandle.FromIntPtr((nint)data).Target!;
-            action((nuint)argument);
+            var action = (Func<double, string>)GCHandle.FromIntPtr((nint)data).Target!;
+            var str = action(*((double*)argument));
+            return Marshal.StringToCoTaskMemUTF8(str);
         }
         catch (Exception e)
         {
             _lastException = ExceptionDispatchInfo.Capture(e);
         }
+
+        return 0;
     }
 
     /// <summary>
     /// Serializes an instance of this value.
     /// </summary>
     /// <param name="serializer">The serializer to use.</param>
-    internal static void Serialize(BincodeSerializer serializer, EguiCallback obj)
+    internal static void Serialize(BincodeSerializer serializer, EguiCallbackStr obj)
     {
         serializer.increase_container_depth();
         serializer.serialize_u64((ulong)obj.func);
@@ -75,11 +89,11 @@ internal unsafe partial struct EguiCallback : IDisposable
     /// </summary>
     /// <param name="deserializer">The deserializer to use.</param>
     /// <returns>The object that was deserialized.</returns>
-    internal static EguiCallback Deserialize(BincodeDeserializer deserializer)
+    internal static EguiCallbackStr Deserialize(BincodeDeserializer deserializer)
     {
         deserializer.increase_container_depth();
-        EguiCallback obj = default;
-        obj.func = (delegate* unmanaged[Cdecl]<void*, void*, void>)deserializer.deserialize_u64();
+        EguiCallbackStr obj = default;
+        obj.func = (delegate* unmanaged[Cdecl]<void*, void*, nint>)deserializer.deserialize_u64();
         obj.data = (void*)deserializer.deserialize_u64();
         deserializer.decrease_container_depth();
         return obj;
