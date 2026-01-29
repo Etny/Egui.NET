@@ -38,9 +38,14 @@ internal unsafe partial struct EguiCallbackFn : IDisposable
     public static EguiCallbackFn Make<A, R>(Func<A, R> callback)
         where A : unmanaged
         where R : unmanaged
-         => new((void*)(nint)GCHandle.Alloc(
-                     (nint argPtr) => callback(*((A*)argPtr))
-                 ));
+         => new((void*)(nint)GCHandle.Alloc((nint argPtr) =>
+             {
+                 R ret = callback(*((A*)argPtr));
+                 var alloc = Marshal.AllocCoTaskMem(sizeof(R));
+                 *((R*)alloc) = ret;
+                 return alloc;
+             }
+             ));
 
     // We can pass strings as a CString, but we have to 
     // allocate them
@@ -49,8 +54,7 @@ internal unsafe partial struct EguiCallbackFn : IDisposable
         => new((void*)(nint)GCHandle.Alloc((nint argPtr) =>
             {
                 string ret = callback(*((A*)argPtr));
-                _returnAllocation = Marshal.StringToCoTaskMemUTF8(ret);
-                return _returnAllocation;
+                return Marshal.StringToCoTaskMemUTF8(ret);
             }));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -59,7 +63,8 @@ internal unsafe partial struct EguiCallbackFn : IDisposable
         try
         {
             var func = (Func<nint, nint>)GCHandle.FromIntPtr((nint)data).Target!;
-            return func((nint)argument);
+            _returnAllocation = func((nint)argument);
+            return _returnAllocation;
         }
         catch (Exception e)
         {
