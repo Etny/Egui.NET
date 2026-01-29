@@ -4,23 +4,11 @@ using System.Runtime.InteropServices;
 
 namespace Egui;
 
-
-unsafe static class EguiCallbackFnFunc
-{
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    public static nint InvokeCallbackWrapper(void* argument, void* data)
-    {
-        var func = (Func<nint, nint>)GCHandle.FromIntPtr((nint)data).Target!;
-        return func((nint)argument);
-    }
-}
-
 /// <summary>
 /// A callback that may be passed to unmanaged code.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
-    where A : unmanaged
+internal unsafe partial struct EguiCallbackFn : IDisposable
 {
 
     /// <summary>
@@ -31,7 +19,7 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
 
 
     [ThreadStatic]
-    private static nint _lastAlloc;
+    private static nint _returnAllocation = 0;
 
     /// <summary>
     /// The last exception that occurred.
@@ -39,41 +27,55 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
     [ThreadStatic]
     private static ExceptionDispatchInfo? _lastException;
 
-    /// <summary>
-    /// Creates a new object for invoking the given callback.
-    /// </summary>
-    /// <param name="callback">The callback to invoke.</param>
-    public EguiCallbackFn(Func<A, R> callback)
-    {
-        func = &EguiCallbackFnFunc.InvokeCallbackWrapper;
-        callbackHandle = (void*)(nint)GCHandle.Alloc((nint a) =>
-        {
-            try
-            {
-                R ret = callback(*((A*)a));
-                if (ret is string s)
-                    _lastAlloc = Marshal.StringToCoTaskMemUTF8(s);
-                else
-                {
-                    _lastAlloc = Marshal.AllocCoTaskMem(sizeof(R));
-                    *((R*)_lastAlloc) = ret;
-                }
-                return _lastAlloc;
-            }
-            catch (Exception e)
-            {
-                _lastException = ExceptionDispatchInfo.Capture(e);
-            }
 
-            return 0;
-        });
+    private EguiCallbackFn(void* callbackHandle)
+    {
+        this.func = &InvokeCallbackWrapper;
+        this.callbackHandle = callbackHandle;
     }
 
+    // For unmanaged types, we don't have to allocate anything
+    public static EguiCallbackFn Make<A, R>(Func<A, R> callback)
+        where A : unmanaged
+        where R : unmanaged
+         => new((void*)(nint)GCHandle.Alloc(
+                     (nint argPtr) => callback(*((A*)argPtr))
+                 ));
+
+    // We can pass strings as a CString, but we have to 
+    // allocate them
+    public static EguiCallbackFn Make<A>(Func<A, string> callback)
+        where A : unmanaged
+        => new((void*)(nint)GCHandle.Alloc((nint argPtr) =>
+            {
+                string ret = callback(*((A*)argPtr));
+                _returnAllocation = Marshal.StringToCoTaskMemUTF8(ret);
+                return _returnAllocation;
+            }));
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static nint InvokeCallbackWrapper(void* argument, void* data)
+    {
+        try
+        {
+            var func = (Func<nint, nint>)GCHandle.FromIntPtr((nint)data).Target!;
+            return func((nint)argument);
+        }
+        catch (Exception e)
+        {
+            _lastException = ExceptionDispatchInfo.Capture(e);
+            return 0;
+        }
+    }
 
     /// <inheritdoc/>
     void IDisposable.Dispose()
     {
-        Marshal.FreeCoTaskMem(_lastAlloc);
+        if (_returnAllocation > 0)
+        {
+            Marshal.FreeCoTaskMem(_returnAllocation);
+            _returnAllocation = 0;
+        }
         GCHandle.FromIntPtr((nint)callbackHandle).Free();
 
         if (_lastException is not null)
@@ -88,7 +90,7 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
     /// Serializes an instance of this value.
     /// </summary>
     /// <param name="serializer">The serializer to use.</param>
-    internal static void Serialize(BincodeSerializer serializer, EguiCallbackFn<A, R> obj)
+    internal static void Serialize(BincodeSerializer serializer, EguiCallbackFn obj)
     {
         serializer.increase_container_depth();
         serializer.serialize_u64((ulong)obj.func);
@@ -101,10 +103,10 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
     /// </summary>
     /// <param name="deserializer">The deserializer to use.</param>
     /// <returns>The object that was deserialized.</returns>
-    internal static EguiCallbackFn<A, R> Deserialize(BincodeDeserializer deserializer)
+    internal static EguiCallbackFn Deserialize(BincodeDeserializer deserializer)
     {
         deserializer.increase_container_depth();
-        EguiCallbackFn<A, R> obj = default;
+        EguiCallbackFn obj = default;
         obj.func = (delegate* unmanaged[Cdecl]<void*, void*, nint>)deserializer.deserialize_u64();
         obj.callbackHandle = (void*)deserializer.deserialize_u64();
         deserializer.decrease_container_depth();
