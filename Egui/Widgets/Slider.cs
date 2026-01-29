@@ -19,6 +19,8 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     private ref T _value;
     private SerializableSlider _inner;
 
+    private Func<double, string>? _formatter = null;
+
     /// <summary>
     /// Creates a new horizontal slider.
     ///
@@ -331,6 +333,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     public readonly Slider<T> Binary(nuint minWidth, bool twosComplement)
     {
         var result = this;
+        result._formatter = null;
         result._inner.MinWidth = minWidth;
         result._inner.TwosComplement = twosComplement;
         result._inner.Parser = (byte)Parser.Binary;
@@ -354,6 +357,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     public readonly Slider<T> Octal(nuint minWidth, bool twosComplement)
     {
         var result = this;
+        result._formatter = null;
         result._inner.MinWidth = minWidth;
         result._inner.TwosComplement = twosComplement;
         result._inner.Parser = (byte)Parser.Octal;
@@ -377,10 +381,24 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     public readonly Slider<T> Hexadecimal(nuint minWidth, bool twosComplement, bool upper)
     {
         var result = this;
+        result._formatter = null;
         result._inner.MinWidth = minWidth;
         result._inner.TwosComplement = twosComplement;
         result._inner.Upper = upper;
         result._inner.Parser = (byte)Parser.Hexadecimal;
+        return result;
+    }
+
+
+    /// <summary>
+    /// Set custom formatter defining how numbers are converted into text.
+    ///
+    /// </summary>
+    public readonly Slider<T> CustomFormatter(Func<double, string> formatter)
+    {
+        var result = this;
+        result._inner.Parser = (byte)Parser.Custom;
+        result._formatter = formatter;
         return result;
     }
 
@@ -389,6 +407,10 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     {
         ui.AssertInitialized();
         var value = double.CreateSaturating(_value);
+
+        if (_formatter is not null)
+            _inner.formatterOutput = _formatter(value);
+
         var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value);
         _value = T.CreateSaturating(newValue);
         return response;
@@ -438,6 +460,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
         public bool TwosComplement;
         public bool Upper;
         public byte Parser;
+        public string? formatterOutput;
 
         internal static void Serialize(Bincode.BincodeSerializer serializer, SerializableSlider value) => value.Serialize(serializer);
 
@@ -465,16 +488,21 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
             serializer.serialize_bool(TwosComplement);
             serializer.serialize_bool(Upper);
             serializer.serialize_u8(Parser);
+            Egui.TraitHelpers.serialize_option_str(formatterOutput, serializer);
             serializer.decrease_container_depth();
         }
 
         internal static SerializableSlider Deserialize(Bincode.BincodeDeserializer deserializer) => throw new NotSupportedException();
 
-        private static void serialize_option_HandleShape(HandleShape? value, Bincode.BincodeSerializer serializer) {
-            if (value is not null) {
+        private static void serialize_option_HandleShape(HandleShape? value, Bincode.BincodeSerializer serializer)
+        {
+            if (value is not null)
+            {
                 serializer.serialize_option_tag(true);
                 value.Value.Serialize(serializer);
-            } else {
+            }
+            else
+            {
                 serializer.serialize_option_tag(false);
             }
         }
@@ -485,6 +513,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
         Default = 0,
         Binary = 2,
         Octal = 8,
-        Hexadecimal = 16
+        Hexadecimal = 16,
+        Custom = 32
     }
 }

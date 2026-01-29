@@ -1007,6 +1007,7 @@ struct SerializableSlider {
     pub twos_complement: bool,
     pub upper: bool,
     pub parser: u8,
+    pub formatterOutput: Option<String>,
 }
 
 impl SerializableSlider {
@@ -1036,6 +1037,7 @@ impl SerializableSlider {
             2 => result.binary(self.min_width, self.twos_complement),
             8 => result.octal(self.min_width, self.twos_complement),
             16 => result.hexadecimal(self.min_width, self.twos_complement, self.upper),
+            32 => result.custom_formatter(move |_, _| self.formatterOutput.to_owned().unwrap()),
             _ => panic!("Unrecognized DragValue parser type")
         }
     }
