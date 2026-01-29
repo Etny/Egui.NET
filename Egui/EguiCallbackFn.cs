@@ -29,6 +29,10 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
     public delegate* unmanaged[Cdecl]<void*, void*, nint> func;
     public void* callbackHandle;
 
+
+    [ThreadStatic]
+    private static nint _lastAlloc;
+
     /// <summary>
     /// The last exception that occurred.
     /// </summary>
@@ -48,11 +52,13 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
             {
                 R ret = callback(*((A*)a));
                 if (ret is string s)
-                    return Marshal.StringToCoTaskMemUTF8(s);
-
-                nint alloc = Marshal.AllocCoTaskMem(sizeof(R));
-                *((R*)alloc) = ret;
-                return alloc;
+                    _lastAlloc = Marshal.StringToCoTaskMemUTF8(s);
+                else
+                {
+                    _lastAlloc = Marshal.AllocCoTaskMem(sizeof(R));
+                    *((R*)_lastAlloc) = ret;
+                }
+                return _lastAlloc;
             }
             catch (Exception e)
             {
@@ -67,6 +73,7 @@ internal unsafe partial struct EguiCallbackFn<A, R> : IDisposable
     /// <inheritdoc/>
     void IDisposable.Dispose()
     {
+        Marshal.FreeCoTaskMem(_lastAlloc);
         GCHandle.FromIntPtr((nint)callbackHandle).Free();
 
         if (_lastException is not null)
