@@ -19,7 +19,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     private ref T _value;
     private SerializableSlider _inner;
 
-    private Func<double, string>? _customFormatter = null;
+    // private Func<double, string>? _customFormatter = null;
 
     /// <summary>
     /// Creates a new horizontal slider.
@@ -119,7 +119,14 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     public readonly Slider<T> CustomFormatter(Func<double, string> formatter)
     {
         var result = this;
-        result._customFormatter = formatter;
+        result._inner.FormatterFn = EguiCallbackFn.Make(formatter);
+        return result;
+    }
+
+    public readonly Slider<T> CustomParser(Func<string, double> parser)
+    {
+        var result = this;
+        result._inner.ParserFn = EguiCallbackFn.Make(parser);
         return result;
     }
 
@@ -398,8 +405,7 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
     {
         ui.AssertInitialized();
         var value = double.CreateSaturating(_value);
-        using EguiCallbackFn? callback = _customFormatter is not null ? EguiCallbackFn.Make(_customFormatter) : null;
-        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, EguiCallbackFn?, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value, callback);
+        var (response, newValue) = EguiMarshal.Call<nuint, SerializableSlider, double, (Response, double)>(EguiFn.egui_widgets_slider_Slider_ui, ui.Ptr, _inner, value);
         _value = T.CreateSaturating(newValue);
         return response;
     }
@@ -448,6 +454,8 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
         public bool TwosComplement;
         public bool Upper;
         public byte Parser;
+        public EguiCallbackFn? FormatterFn;
+        public EguiCallbackFn? ParserFn;
 
         internal static void Serialize(Bincode.BincodeSerializer serializer, SerializableSlider value) => value.Serialize(serializer);
 
@@ -475,6 +483,20 @@ public ref struct Slider<T> : IWidget where T : INumber<T>
             serializer.serialize_bool(TwosComplement);
             serializer.serialize_bool(Upper);
             serializer.serialize_u8(Parser);
+            if (FormatterFn is not null)
+            {
+                serializer.serialize_option_tag(true);
+                EguiCallbackFn.Serialize(serializer, FormatterFn ?? default);
+            }
+            else
+                serializer.serialize_option_tag(false);
+            if (ParserFn is not null)
+            {
+                serializer.serialize_option_tag(true);
+                EguiCallbackFn.Serialize(serializer, ParserFn ?? default);
+            }
+            else
+                serializer.serialize_option_tag(false);
             serializer.decrease_container_depth();
         }
 

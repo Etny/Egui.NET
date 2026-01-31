@@ -36,7 +36,7 @@ internal unsafe partial struct EguiCallbackFn : IDisposable
 
     // For unmanaged types, we don't have to allocate anything
     public static EguiCallbackFn Make<A, R>(Func<A, R> callback)
-        where A : unmanaged
+        // where A : unmanaged
         where R : unmanaged
          => new((void*)(nint)GCHandle.Alloc((nint argPtr) =>
              {

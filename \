@@ -43,7 +43,6 @@ use serde::de::*;
 use std::borrow::*;
 use std::collections::*;
 use std::ffi::*;
-use std::fmt::format;
 use std::marker::PhantomData;
 use std::marker::Tuple;
 use std::mem::*;
@@ -1053,7 +1052,7 @@ struct SerializableSlider {
     pub twos_complement: bool,
     pub upper: bool,
     pub parser: u8,
-    pub formatter_fn: Option<EguiCallbackFn<*const c_char>>,
+    pub formatter_fn: Option<EguiCallbackFn<*const char>>,
     pub parser_fn: Option<EguiCallbackFn<*const f64>>,
 }
 
@@ -1079,18 +1078,11 @@ impl SerializableSlider {
             ..Slider::new(value, self.start..=self.end)
         };
 
-        if let Some(formatter) = self.formatter_fn {
-            result = result.custom_formatter(move |n: f64, _| { 
-                let c_str = unsafe { std::ffi::CStr::from_ptr(formatter.invoke(&n as *const _ as *const _))};
+        if let Some(formatter) = formatter {
+        result = result.custom_formatter(move |n: f64, _| { 
+            let c_str = unsafe { std::ffi::CStr::from_ptr(formatter.invoke(&n as *const _ as *const _))};
                 c_str.to_string_lossy().into_owned()
-            });
-        }
-
-        if let Some(parser) = self.parser_fn {
-            result = result.custom_parser(move |s| {
-                let res = unsafe { *(parser.invoke(s as *const _ as *const _))};
-                Some(res)
-            })
+        });
         }
 
         // match self.parser {
